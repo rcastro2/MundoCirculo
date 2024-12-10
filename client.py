@@ -6,20 +6,29 @@ server_url = "http://127.0.0.1:5000"
 sio = socketio.Client()
 
 @sio.event
+def init(info):
+    global members,pellets
+    members = info["players"]
+    pellets = info["pellets"]
+
+@sio.event
 def players(info):
     global members
-    members = info
+    members[info["id"]] = {"id":info["id"], 
+                    "x":info["x"],
+                    "y":info["y"],
+                    "color":info["color"],
+                    "size":info["size"]
+                    }
 
 @sio.event
 def pellets(info):
     global pellets
-    if type(info) is dict:
-        pellets = info
-    elif info in pellets:
+    if info in pellets:
         del pellets[info]
-    print(info)
 
 colors = {"black":black,"white":white,"red":red,"green":green,"blue":blue,"yellow":yellow,"magenta":magenta,"cyan":cyan,"orange":orange,"pink":pink,"brown":brown,"gray":gray}
+color_names = ["black","red","green","blue","yellow","magenta","cyan","orange","pink","brown","gray"]
 
 game = Game(800,600,"Delta Fighter")
 bk = Image("grid.png",game)
@@ -55,57 +64,63 @@ def player_controls():
     }
     if direction != "":
         sio.emit('players', info)
+        members[you["id"]] = info
     
 
 def display_members():
     global members
-    for key in members:
-        player = members[key]
-        screenX = player["x"] - you["x"] + game.width / 2
-        screenY = player["y"] - you["y"] + game.height / 2
-        if player["id"] == you["id"]:
-            screenX = game.width / 2
-            screenY = game.height / 2
+    try:
+        for key in members:
+            player = members[key]
+            screenX = player["x"] - you["x"] + game.width / 2
+            screenY = player["y"] - you["y"] + game.height / 2
+            if player["id"] == you["id"]:
+                screenX = game.width / 2
+                screenY = game.height / 2
 
-        width,height = player["size"],player["size"]
-        left, top  = screenX-width/2,screenY-height/2
-        rect = pygame.Rect(left,top,width,height)
+            width,height = player["size"],player["size"]
+            left, top  = screenX-width/2,screenY-height/2
+            rect = pygame.Rect(left,top,width,height)
 
-        color = player["color"] if player["color"] in colors else white
-        pygame.draw.ellipse(game.screen,color,rect)
-        offsetX = len(player["id"])*4.5 
-        offsetY = 40 + player["size"] / 3
-        game.drawText(player["id"],screenX - offsetX,screenY - offsetY, Font(color))
-        offsetX = len(f"({player['x']},{player['y']})")*3.2 + player["size"] / 8
-        game.drawText(f"({player['x']},{player['y']})",screenX-offsetX,screenY + offsetY - 10,Font(color))
+            color = player["color"] if player["color"] in colors else white
+            pygame.draw.ellipse(game.screen,color,rect)
+            offsetX = len(player["id"])*4.5 
+            offsetY = 40 + player["size"] / 3
+            game.drawText(player["id"],screenX - offsetX,screenY - offsetY, Font(color))
+            offsetX = len(f"({player['x']},{player['y']})")*3.2 + player["size"] / 8
+            game.drawText(f"({player['x']},{player['y']})",screenX-offsetX,screenY + offsetY - 10,Font(color))
+    except:
+        pass
 
 def display_pellets():
     global pellets
-    for key in pellets:
-        pellet = pellets[key]
-        screenX = pellet["x"] - you["x"] + game.width / 2
-        screenY = pellet["y"] - you["y"] + game.height / 2
-        
-        width,height = 25,25
-        left, top  = screenX-width/2,screenY-height/2
-        rect = pygame.Rect(left,top,width,height)
+    try:
+        for key in pellets:
+            pellet = pellets[key]
+            screenX = pellet["x"] - you["x"] + game.width / 2
+            screenY = pellet["y"] - you["y"] + game.height / 2
+            
+            width,height = 25,25
+            left, top  = screenX-width/2,screenY-height/2
+            rect = pygame.Rect(left,top,width,height)
 
-        pygame.draw.ellipse(game.screen,pellet["color"],rect)
-        game.drawText(f'({key})',screenX - 10,screenY - 40, Font(pellet["color"]))
-        if distance(pellet,you) < you["size"]:
-            del pellets[key]
-            print(f'Collision with pellet {key}')
-            you["size"] += 5
-            sio.emit('pellets',key)
-            info = {"id":you["id"], 
-                    "x":you["x"],
-                    "y":you["y"],
-                    "color":you["color"],
-                    "size":you["size"]
-                    }
-            sio.emit('players', info)
-            break
-
+            pygame.draw.ellipse(game.screen,pellet["color"],rect)
+            game.drawText(f'({key})',screenX - 10,screenY - 40, Font(pellet["color"]))
+            if distance(pellet,you) < you["size"]:
+                del pellets[key]
+                
+                you["size"] += 5
+                sio.emit('pellets',key)
+                info = {"id":you["id"], 
+                        "x":you["x"],
+                        "y":you["y"],
+                        "color":you["color"],
+                        "size":you["size"]
+                        }
+                sio.emit('players', info)
+                break
+    except:
+        pass
 
 def game_screen():
     global direction
@@ -122,10 +137,13 @@ def distance(obj1, obj2):
     return math.sqrt(math.pow(obj1["x"] - obj2["x"],2) + math.pow(obj1["y"] - obj2["y"],2) )
 
 if __name__ == "__main__":
-    you["id"] = input("Enter Name: ")
-    color = input("Enter Color: ")
+    #Bypass player input for development purposes
+    you["id"] = f'Python{randint(0,9)}'#input("Enter Name: ")
+    
+    color = color_names[randint(0,len(color_names)-1)]#input("Enter Color: ")
     you["color"] = color if color in colors else "white"
     if color != you["color"]: print(f"{color} replaced with {you['color']}")
+
     sio.connect(server_url+f"?id={you['id']}&color='{you['color']}'")
     game_screen() 
     sio.wait()  

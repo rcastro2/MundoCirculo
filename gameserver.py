@@ -9,23 +9,29 @@ socketio = SocketIO(app, cors_allowed_origins="http://localhost:8000")
 
 players = {}
 pellets = {}
+sids = []
+colors = ["black","red","green","blue","yellow","magenta","cyan","orange","pink","brown","gray"]
 
 @socketio.on('connect')
 def connect_handler():
     print("Attempted Connection")
     id = request.args["id"]
+    socket_id = request.sid 
     color = request.args["color"]
     if id != "null":
+        sids.append(socket_id)
         players[id] = {"id":id,
                         "color":color,
                         "x":0,
                         "y":0,
                         "size":25
-                        }  
-        emit('players', players, broadcast=True )
-        emit('pellets', pellets, broadcast=True)
+                        } 
+        data = {"players":players,"pellets":pellets} 
+        emit('init', data, to=socket_id)
 
-        socket_id = request.sid  
+        other_players = [sid for sid in sids if sid != socket_id]
+        emit('players', players[id],to=other_players)
+         
         print(f"Client ({id}) connected with socket ID: {socket_id}")
 
 @socketio.on('players')
@@ -35,15 +41,17 @@ def players_handler(info):
                            "y":info["y"],
                            "color":info["color"],
                            "size":info["size"]}  
-    #print(players)
-    emit('players', players, broadcast=True )
+    
+    other_players = [sid for sid in sids if sid != request.sid]
+    emit('players', players[info["id"]], to=other_players )
 
 @socketio.on('pellets')
 def pellets_handler(info):
-    if info in pellets:
-        del pellets[info]
+    if int(info) in pellets:
+        del pellets[int(info)]
 
-    emit('pellets',info,broadcast=True)
+    other_players = [sid for sid in sids if sid != request.sid]
+    emit('pellets',info,to=other_players)
 
 if __name__ == '__main__':
     #Suppress Flask messages
@@ -53,6 +61,6 @@ if __name__ == '__main__':
     for i in range(20):
         x = randint(-1000,1000)
         y = randint(-1000,1000)
-        pellets[i] = {"x":x,"y":y,"color":"magenta"}
+        pellets[i] = {"x":x,"y":y,"color":colors[randint(0,len(colors)-1)]}
     print(pellets)
     socketio.run(app, port=5000, log_output=False, debug=False)
